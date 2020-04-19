@@ -21,7 +21,6 @@ import com.google.api.gax.grpc.GrpcStatusCode;
 import com.google.api.gax.rpc.ApiException;
 import com.google.api.gax.rpc.StatusCode;
 import io.grpc.Status.Code;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.annotation.Nullable;
 import org.apache.http.client.HttpResponseException;
@@ -38,14 +37,14 @@ final class PhotosLibraryUploadExceptionMappingFn
   @Nullable
   @Override
   public UploadMediaItemResponse apply(@Nullable Throwable input) {
-    Optional<String> resumeUrl = Optional.ofNullable(atomicResumeUrl.get());
+    String resumeUrl = atomicResumeUrl.get();
     return UploadMediaItemResponse.newBuilder()
         .setError(
             UploadMediaItemResponse.Error.newBuilder()
                 .setResumeUrl(resumeUrl)
                 .setCause(
                     new ApiException(
-                        input, getStatusCode(input), resumeUrl.isPresent() /* retryable */))
+                        input, getStatusCode(input), resumeUrl != null /* retryable */))
                 .build())
         .build();
   }

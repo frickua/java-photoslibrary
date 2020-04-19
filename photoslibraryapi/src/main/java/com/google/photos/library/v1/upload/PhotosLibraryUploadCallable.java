@@ -21,12 +21,11 @@ import static org.threeten.bp.temporal.ChronoUnit.MILLIS;
 import com.google.api.gax.retrying.RetrySettings;
 import com.google.api.gax.rpc.ClientContext;
 import com.google.photos.library.v1.PhotosLibrarySettings;
+import com.google.photos.library.v1.util.StringUtil;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Optional;
-import java.util.OptionalLong;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeoutException;
@@ -44,23 +43,6 @@ import org.threeten.bp.Duration;
 
 final class PhotosLibraryUploadCallable implements Callable<UploadMediaItemResponse> {
 
-  private static final class UploadCommands {
-    private static final String START = "start";
-    private static final String UPLOAD = "upload";
-    private static final String QUERY = "query";
-    private static final String FINALIZE = "finalize";
-    private static final String CANCEL = "cancel";
-
-    private UploadCommands() {}
-  }
-
-  private static final class UploadStatuses {
-    private static final String ACTIVE = "active";
-    private static final String FINAL = "final";
-
-    private UploadStatuses() {}
-  }
-
   private static final String FILE_NAME_HEADER = "X-Goog-Upload-File-Name";
   private static final String FILE_SIZE_HEADER = "X-Goog-Upload-Raw-Size";
   private static final String UPLOAD_PROTOCOL_HEADER = "X-Goog-Upload-Protocol";
@@ -72,12 +54,9 @@ final class PhotosLibraryUploadCallable implements Callable<UploadMediaItemRespo
   private static final String UPLOAD_SIZE_HEADER = "X-Goog-Upload-Header-Content-Length";
   private static final String UPLOAD_GRANULARITY_HEADER = "X-Goog-Upload-Chunk-Granularity";
   private static final String RECEIVED_BYTE_COUNT_HEADER = "X-Goog-Upload-Size-Received";
-
   private static final String UPLOAD_PROTOCOL_VALUE = "resumable";
-
   private static final Duration UNLIMITED_TIMEOUT = Duration.ZERO;
   private static final int UNLIMITED_RETRIES = 0;
-
   private final UploadMediaItemRequest request;
   private final ClientContext clientContext;
   private final PhotosLibrarySettings photosLibrarySettings;
@@ -98,6 +77,26 @@ final class PhotosLibraryUploadCallable implements Callable<UploadMediaItemRespo
     this.atomicResumeUrl = new AtomicReference<>();
   }
 
+  private static boolean isStatusNotOk(int statusCode) {
+    return statusCode != HttpStatus.SC_OK;
+  }
+
+  private static byte[] trimByteArray(byte[] originalBytes, int newSize) {
+    if (newSize > originalBytes.length) {
+      return originalBytes;
+    }
+    byte[] newBytes = new byte[newSize];
+    System.arraycopy(originalBytes, 0, newBytes, 0, newSize);
+    return newBytes;
+  }
+
+  public static int toIntExact(long value) {
+    if ((int) value != value) {
+      throw new ArithmeticException("integer overflow");
+    }
+    return (int) value;
+  }
+
   public AtomicReference<String> getAtomicResumeUrl() {
     return atomicResumeUrl;
   }
@@ -111,14 +110,14 @@ final class PhotosLibraryUploadCallable implements Callable<UploadMediaItemRespo
     this.atomicResumeUrl.set(uploadUrl);
     checkForTimeout(initialMillis);
 
-    Optional<HttpResponse> response = Optional.empty();
+    HttpResponse response = null;
     RetrySettings retrySettings =
         photosLibrarySettings.uploadMediaItemSettings().getRetrySettings();
 
     // There is no error by default
     boolean successful = false;
     int retries = 0;
-    OptionalLong previousDelayMillis = OptionalLong.empty();
+    Long previousDelayMillis = null;
 
     while (!successful
         && (retrySettings.getMaxAttempts() == UNLIMITED_RETRIES
@@ -133,10 +132,10 @@ final class PhotosLibraryUploadCallable implements Callable<UploadMediaItemRespo
 
       while (receivedByteCount < request.getFileSize()) {
         // Uploads the next chunk
-        response = Optional.of(uploadNextChunk(uploadUrl, receivedByteCount));
+        response = uploadNextChunk(uploadUrl, receivedByteCount);
         checkForTimeout(initialMillis);
 
-        if (!isStatusOk(response.get().getStatusLine().getStatusCode())) {
+        if (isStatusNotOk(response.getStatusLine().getStatusCode())) {
           successful = false;
           break;
         }
@@ -151,9 +150,8 @@ final class PhotosLibraryUploadCallable implements Callable<UploadMediaItemRespo
       if (!successful && retries < retrySettings.getMaxAttempts()) {
         // Calculates delay millis for the current retry
         long delayMillis = retrySettings.getInitialRetryDelay().get(MILLIS);
-        if (previousDelayMillis.isPresent()) {
-          delayMillis =
-              (long) (previousDelayMillis.getAsLong() * retrySettings.getRetryDelayMultiplier());
+        if (previousDelayMillis != null) {
+          delayMillis = (long) (previousDelayMillis * retrySettings.getRetryDelayMultiplier());
         }
         // Calculates actual delay millis and randomizes the duration if necessary
         long actualDelayMillis =
@@ -167,14 +165,14 @@ final class PhotosLibraryUploadCallable implements Callable<UploadMediaItemRespo
         checkForTimeout(initialMillis);
 
         // Update previousDelayMillis
-        previousDelayMillis = OptionalLong.of(actualDelayMillis);
+        previousDelayMillis = actualDelayMillis;
       }
     }
 
     if (!successful) {
-      if (response.isPresent()) {
+      if (response != null) {
         throw new HttpResponseException(
-            response.get().getStatusLine().getStatusCode(), ExceptionStrings.INVALID_UPLOAD_RESULT);
+            response.getStatusLine().getStatusCode(), ExceptionStrings.INVALID_UPLOAD_RESULT);
       } else {
         throw new IllegalStateException(ExceptionStrings.UNKNOWN_ERROR);
       }
@@ -201,20 +199,20 @@ final class PhotosLibraryUploadCallable implements Callable<UploadMediaItemRespo
 
   /** Initiates the upload and get an upload url. */
   private String getUploadUrl() throws IOException {
-    if (request.getUploadUrl().isPresent()) {
-      return request.getUploadUrl().get();
+    if (request.getUploadUrl() != null) {
+      return request.getUploadUrl();
     }
     HttpPost httpPost = createAuthenticatedPostRequest(PhotosLibrarySettings.getUploadEndpoint());
     httpPost.addHeader(UPLOAD_PROTOCOL_HEADER, UPLOAD_PROTOCOL_VALUE);
     httpPost.addHeader(UPLOAD_COMMAND_HEADER, UploadCommands.START);
     httpPost.addHeader(FILE_SIZE_HEADER, String.valueOf(request.getFileSize()));
 
-    if (request.getMimeType().isPresent()) {
-      httpPost.addHeader(UPLOAD_CONTENT_TYPE_HEADER, request.getMimeType().get());
+    if (request.getMimeType() != null) {
+      httpPost.addHeader(UPLOAD_CONTENT_TYPE_HEADER, request.getMimeType());
     }
 
-    if (request.getFileName().isPresent()) {
-      httpPost.addHeader(FILE_NAME_HEADER, request.getFileName().get());
+    if (request.getFileName() != null) {
+      httpPost.addHeader(FILE_NAME_HEADER, request.getFileName());
     }
 
     CloseableHttpClient httpClient = HttpClientBuilder.create().useSystemProperties().build();
@@ -276,7 +274,8 @@ final class PhotosLibraryUploadCallable implements Callable<UploadMediaItemRespo
 
     if (receivedByteCount + readByteCount == request.getFileSize()) {
       httpPost.addHeader(
-          UPLOAD_COMMAND_HEADER, String.join(",", UploadCommands.UPLOAD, UploadCommands.FINALIZE));
+          UPLOAD_COMMAND_HEADER,
+          StringUtil.join(",", UploadCommands.UPLOAD, UploadCommands.FINALIZE));
     } else {
       httpPost.addHeader(UPLOAD_COMMAND_HEADER, UploadCommands.UPLOAD);
     }
@@ -298,7 +297,7 @@ final class PhotosLibraryUploadCallable implements Callable<UploadMediaItemRespo
     if (photosLibrarySettings.uploadMediaItemSettings().getRetrySettings().getTotalTimeout()
         != UNLIMITED_TIMEOUT) {
       configBuilder.setConnectionRequestTimeout(
-          Math.toIntExact(
+          toIntExact(
               photosLibrarySettings
                   .uploadMediaItemSettings()
                   .getRetrySettings()
@@ -308,13 +307,13 @@ final class PhotosLibraryUploadCallable implements Callable<UploadMediaItemRespo
     return configBuilder.build();
   }
 
-  private UploadMediaItemResponse buildUploadMediaItemResponse(Optional<HttpResponse> response)
+  private UploadMediaItemResponse buildUploadMediaItemResponse(HttpResponse response)
       throws IOException {
-    if (!response.isPresent() || !isStatusOk(response.get().getStatusLine().getStatusCode())) {
+    if (response == null || isStatusNotOk(response.getStatusLine().getStatusCode())) {
       throw new IllegalArgumentException(ExceptionStrings.INVALID_UPLOAD_RESULT);
     }
     return UploadMediaItemResponse.newBuilder()
-        .setUploadToken(EntityUtils.toString(response.get().getEntity()))
+        .setUploadToken(EntityUtils.toString(response.getEntity()))
         .build();
   }
 
@@ -322,7 +321,7 @@ final class PhotosLibraryUploadCallable implements Callable<UploadMediaItemRespo
     HttpPost request = new HttpPost(uploadUrl);
     Map<String, List<String>> requestMetadata = clientContext.getCredentials().getRequestMetadata();
     for (Entry<String, List<String>> entry : requestMetadata.entrySet()) {
-      request.addHeader(entry.getKey(), String.join(", ", entry.getValue()));
+      request.addHeader(entry.getKey(), StringUtil.join(", ", entry.getValue()));
     }
     return request;
   }
@@ -332,16 +331,20 @@ final class PhotosLibraryUploadCallable implements Callable<UploadMediaItemRespo
     optimalChunkSize = (1 + (request.getChunkSize() - 1) / uploadGranularity) * uploadGranularity;
   }
 
-  private static boolean isStatusOk(int statusCode) {
-    return statusCode == HttpStatus.SC_OK;
+  private static final class UploadCommands {
+    private static final String START = "start";
+    private static final String UPLOAD = "upload";
+    private static final String QUERY = "query";
+    private static final String FINALIZE = "finalize";
+    private static final String CANCEL = "cancel";
+
+    private UploadCommands() {}
   }
 
-  private static byte[] trimByteArray(byte[] originalBytes, int newSize) {
-    if (newSize > originalBytes.length) {
-      return originalBytes;
-    }
-    byte[] newBytes = new byte[newSize];
-    System.arraycopy(originalBytes, 0, newBytes, 0, newSize);
-    return newBytes;
+  private static final class UploadStatuses {
+    private static final String ACTIVE = "active";
+    private static final String FINAL = "final";
+
+    private UploadStatuses() {}
   }
 }

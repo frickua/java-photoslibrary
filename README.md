@@ -6,7 +6,7 @@ This repository contains the Java client library for the [Google Photos Library 
 
 ## Requirements and preparation
 
-* Java 1.8+
+* Java 1.7+
 * Gradle build system or Maven 3.0+ recommended.
 * OAuth 2.0 credentials configured for your project as [described below](#set-up-your-oauth2-credentials-for-java). (Note that to run the samples, use the "*other*" client type.)
 

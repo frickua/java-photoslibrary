@@ -17,22 +17,21 @@
 package com.google.photos.library.v1.upload;
 
 import com.google.api.gax.rpc.ApiException;
-import java.util.Optional;
 
 /** Represents an upload response. */
 public final class UploadMediaItemResponse {
   /** Represents an error while uploading the media item. */
   public static final class Error {
-    private final Optional<String> resumeUrl;
+    private final String resumeUrl;
     private final ApiException cause;
 
-    private Error(Optional<String> resumeUrl, ApiException cause) {
+    private Error(String resumeUrl, ApiException cause) {
       this.resumeUrl = resumeUrl;
       this.cause = cause;
     }
 
     /** Url to retry the upload. */
-    public Optional<String> getResumeUrl() {
+    public String getResumeUrl() {
       return resumeUrl;
     }
 
@@ -47,14 +46,14 @@ public final class UploadMediaItemResponse {
 
     /** Builder for {@link Error}. */
     public static final class Builder {
-      private Optional<String> resumeUrl;
+      private String resumeUrl;
       private ApiException cause;
 
       private Builder() {
-        resumeUrl = Optional.empty();
+        resumeUrl = null;
       }
 
-      public Builder setResumeUrl(Optional<String> resumeUrl) {
+      public Builder setResumeUrl(String resumeUrl) {
         this.resumeUrl = resumeUrl;
         return this;
       }
@@ -70,21 +69,21 @@ public final class UploadMediaItemResponse {
     }
   }
 
-  private final Optional<String> uploadToken;
-  private final Optional<Error> error;
+  private final String uploadToken;
+  private final Error error;
 
-  private UploadMediaItemResponse(Optional<String> uploadToken, Optional<Error> error) {
+  private UploadMediaItemResponse(String uploadToken, Error error) {
     this.uploadToken = uploadToken;
     this.error = error;
   }
 
   /** Upload token in case of success. */
-  public Optional<String> getUploadToken() {
+  public String getUploadToken() {
     return uploadToken;
   }
 
   /** Error in case of failure. */
-  public Optional<Error> getError() {
+  public Error getError() {
     return error;
   }
 
@@ -95,20 +94,20 @@ public final class UploadMediaItemResponse {
   /** Builder for {@link UploadMediaItemResponse}. */
   public static final class Builder {
 
-    private Optional<String> uploadToken;
-    private Optional<Error> error;
+    private String uploadToken;
+    private Error error;
 
     private Builder() {}
 
     public Builder setUploadToken(String uploadToken) {
-      this.uploadToken = Optional.of(uploadToken);
-      this.error = Optional.empty();
+      this.uploadToken = uploadToken;
+      this.error = null;
       return this;
     }
 
     public Builder setError(Error error) {
-      this.error = Optional.of(error);
-      this.uploadToken = Optional.empty();
+      this.error = error;
+      this.uploadToken = null;
       return this;
     }
 

@@ -18,24 +18,23 @@ package com.google.photos.library.v1.upload;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.util.Optional;
 
 /** Represents an upload request. */
 public final class UploadMediaItemRequest {
 
   private static final int DEFAULT_CHUNK_SIZE = 1024 * 1024 * 10; // 10 MB
 
-  private final Optional<String> fileName;
-  private final Optional<String> mimeType;
-  private final Optional<String> uploadUrl;
+  private final String fileName;
+  private final String mimeType;
+  private final String uploadUrl;
   private final int chunkSize;
   private final RandomAccessFile dataFile;
 
   private UploadMediaItemRequest(
-      Optional<String> fileName,
-      Optional<String> uploadUrl,
+      String fileName,
+      String uploadUrl,
       int chunkSize,
-      Optional<String> mimeType,
+      String mimeType,
       RandomAccessFile dataFile) {
     this.fileName = fileName;
     this.uploadUrl = uploadUrl;
@@ -45,17 +44,17 @@ public final class UploadMediaItemRequest {
   }
 
   /** Returns the file name to be uploaded. */
-  public Optional<String> getFileName() {
+  public String getFileName() {
     return fileName;
   }
 
   /** Returns the mime type for the file to be uploaded. */
-  public Optional<String> getMimeType() {
+  public String getMimeType() {
     return mimeType;
   }
 
   /** Returns the url where this file will be uploaded. */
-  public Optional<String> getUploadUrl() {
+  public String getUploadUrl() {
     return uploadUrl;
   }
 
@@ -86,17 +85,17 @@ public final class UploadMediaItemRequest {
   /** Builder for {@link UploadMediaItemRequest}. */
   public static final class Builder {
 
-    private Optional<String> fileName;
-    private Optional<String> mimeType;
-    private Optional<String> uploadUrl;
+    private String fileName;
+    private String mimeType;
+    private String uploadUrl;
     private int chunkSize;
     private RandomAccessFile dataFile;
 
     private Builder() {
       chunkSize = DEFAULT_CHUNK_SIZE;
-      fileName = Optional.empty();
-      mimeType = Optional.empty();
-      uploadUrl = Optional.empty();
+      fileName = null;
+      mimeType = null;
+      uploadUrl = null;
     }
 
     /**
@@ -108,17 +107,17 @@ public final class UploadMediaItemRequest {
      */
     @Deprecated
     public Builder setFileName(String fileName) {
-      this.fileName = Optional.of(fileName);
+      this.fileName = fileName;
       return this;
     }
 
     public Builder setMimeType(String mimeType) {
-      this.mimeType = Optional.of(mimeType);
+      this.mimeType = mimeType;
       return this;
     }
 
     public Builder setUploadUrl(String uploadUrl) {
-      this.uploadUrl = Optional.of(uploadUrl);
+      this.uploadUrl = uploadUrl;
       return this;
     }
 
